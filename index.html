@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
   <title>LabStockTrack_BQ</title>
   <link rel="icon" type="image/png" href="app-icon.png">
   <!-- React 18, Babel, Tailwind, Lucide Icons -->
@@ -336,9 +337,11 @@
       const handleOutboundSubmit = async (e) => {
         e.preventDefault();
         const { itemId, batchId, qty } = outboundForm;
+        if (Number(qty) < 1) { alert('出庫數量必須至少為 1'); return; }
+        
         const item = inventory.find(i => i.id == itemId);
         const targetBatch = item.batches.find(b => b.id == batchId);
-        if (!targetBatch || Number(targetBatch.qty) < Number(qty)) { alert('庫存不足'); return; }
+        if (!targetBatch || Number(targetBatch.qty) < Number(qty)) { alert(`庫存不足！當前批號庫存僅剩 ${targetBatch ? targetBatch.qty : 0}`); return; }
 
         const newBatches = item.batches.map(b => b.id == batchId ? { ...b, qty: Number(b.qty) - Number(qty) } : b);
         const newLog = { itemId, type: "出庫", change: '-' + qty, batchNo: targetBatch.batchNo, user: "lab", date: formatDateTime() };
@@ -353,6 +356,8 @@
       const handleInbound = async (e) => {
         e.preventDefault();
         const { itemId, batchNo, packageQty, unitsPerPackage, expiry, invoiceDate } = inboundForm;
+        if (Number(packageQty) < 1 || Number(unitsPerPackage) < 1) { alert('進貨數量必須至少為 1'); return; }
+        
         const total = Number(packageQty) * Number(unitsPerPackage);
         const item = inventory.find(i => i.id == itemId);
         const newBatches = (item.batches || []).map(b => ({ ...b, qty: Number(b.qty) }));
@@ -894,7 +899,7 @@
                         {activeB.map(b => <option key={b.id} value={b.id}>{b.batchNo} (餘: {b.qty} / 效: {b.expiry})</option>)}
                       </select>
                     </div>
-                    <div><label className="text-[10px] font-extrabold block mb-1 uppercase">數量 ({item?.unit})</label><input type="number" min="1" className="w-full p-3 border rounded-xl font-bold outline-none" value={outboundForm.qty} onChange={e => setOutboundForm({ ...outboundForm, qty: Number(e.target.value) })} /></div>
+                    <div><label className="text-[10px] font-extrabold block mb-1 uppercase">數量 ({item?.unit})</label><input type="number" required min="1" max={activeB.find(b => b.id == outboundForm.batchId)?.qty || 1} className="w-full p-3 border rounded-xl font-bold outline-none" value={outboundForm.qty} onChange={e => setOutboundForm({ ...outboundForm, qty: Number(e.target.value) })} /></div>
                     <button type="submit" className="w-full py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl hover:rose-700 transition active:scale-95">確認扣庫</button>
                   </form>
                 </div>
