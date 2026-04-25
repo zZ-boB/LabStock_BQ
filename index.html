@@ -5,15 +5,953 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LabStockTrack_BQ</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" href="app-icon.png">
+  <!-- React 18, Babel, Tailwind, Lucide Icons -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap"
     rel="stylesheet">
+  <style>
+    html {
+      font-size: 95%; /* 手機端稍微縮小一點確保不換行 */
+    }
+
+    @media (min-width: 768px) {
+      html {
+        font-size: 110%; /* 電腦端維持放大 */
+      }
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .animate-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
 </head>
 
 <body class="bg-slate-50">
   <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
+
+  <script type="text/babel">
+    const { useState, useMemo, useEffect } = React;
+
+    // --- Lucide Icon Component (React Safe) ---
+    const Icon = ({ name, size = 24, className = "" }) => {
+      const iconRef = React.useRef(null);
+      useEffect(() => {
+        if (iconRef.current) {
+          iconRef.current.innerHTML = `<i data-lucide="${name}"></i>`;
+          lucide.createIcons({
+            attrs: { stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', width: size, height: size },
+            nameMap: { [name]: name }
+          });
+        }
+      }, [name, size]);
+      return <span ref={iconRef} className={`inline-flex items-center justify-center ${className}`} style={{ width: size, height: size }}></span>;
+    };
+
+    const Package = (p) => <Icon name="package" {...p} />;
+    const Layers = (p) => <Icon name="layers" {...p} />;
+    const HistoryIcon = (p) => <Icon name="history" {...p} />;
+    const BarChart2 = (p) => <Icon name="bar-chart-2" {...p} />;
+    const FileText = (p) => <Icon name="file-text" {...p} />;
+    const Settings = (p) => <Icon name="settings" {...p} />;
+    const LogOut = (p) => <Icon name="log-out" {...p} />;
+    const Bell = (p) => <Icon name="bell" {...p} />;
+    const Calendar = (p) => <Icon name="calendar" {...p} />;
+    const PlusCircle = (p) => <Icon name="plus-circle" {...p} />;
+    const MinusCircle = (p) => <Icon name="minus-circle" {...p} />;
+    const Search = (p) => <Icon name="search" {...p} />;
+    const Download = (p) => <Icon name="download" {...p} />;
+    const Edit2 = (p) => <Icon name="edit-2" {...p} />;
+    const X = (p) => <Icon name="x" {...p} />;
+    const DollarSign = (p) => <Icon name="dollar-sign" {...p} />;
+
+    class ErrorBoundary extends React.Component {
+      constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+      static getDerivedStateFromError(error) { return { hasError: true, error: error }; }
+      render() {
+        if (this.state.hasError) {
+          return (
+            <div className="p-10 text-center font-sans">
+              <h1 className="text-2xl font-bold text-red-600">系統發生錯誤</h1>
+              <pre className="mt-4 p-4 bg-slate-100 rounded text-left text-xs overflow-auto max-h-60">{String(this.state.error)}</pre>
+              <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg font-bold">清除快取並重新整理</button>
+            </div>
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    // --- Supabase Cloud Config ---
+    const supabaseUrl = 'https://xwbegziyfjoysjmrtsqy.supabase.co';
+    const supabaseKey = 'sb_publishable_m9UVUpnNMuXh6VWxj2t6cQ_SVKQKaOH';
+    const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+    const App = () => {
+      const [isLoggedIn, setIsLoggedIn] = useState(false);
+      const [username, setUsername] = useState('');
+      const [password, setPassword] = useState('');
+      const [loginError, setLoginError] = useState('');
+      const [activeTab, setActiveTab] = useState('inventory');
+      const [activeSubTab, setActiveSubTab] = useState('Media/REAG.');
+      const [isCloudLoading, setIsCloudLoading] = useState(true);
+
+      // --- 資料狀態 ---
+      const [inventory, setInventory] = useState([
+        { id: 1, name: "3002 dish(HTF)", vendor: "東興", minQty: 2, category: "CONS.", unit: "箱", unitPrice: 8500, batches: [] },
+        { id: 2, name: "3001 dish(Q2)", vendor: "東興", minQty: 2, category: "CONS.", unit: "箱", unitPrice: 8500, batches: [] },
+        { id: 3, name: "TimeLapse dish", vendor: "Vitrolife", minQty: 5, category: "CONS.", unit: "盒", unitPrice: 12000, batches: [] },
+        { id: 4, name: "4-well dish", vendor: "Nunc", minQty: 3, category: "CONS.", unit: "箱", unitPrice: 9200, batches: [] },
+        { id: 9, name: "巴斯德管", vendor: "億宸", minQty: 1, category: "CONS.", unit: "箱", unitPrice: 4500, batches: [] },
+        { id: 10, name: "10mL塑膠吸管", vendor: "Falcon", minQty: 5, category: "CONS.", unit: "包", unitPrice: 1500, batches: [] },
+        { id: 17, name: "Q1", vendor: "億宸", minQty: 2, category: "Media/REAG.", unit: "瓶", unitPrice: 1545, batches: [] },
+        { id: 18, name: "Q2", vendor: "億宸", minQty: 2, category: "Media/REAG.", unit: "瓶", unitPrice: 1545, batches: [] },
+        { id: 23, name: "冷凍KIT", vendor: "東興", minQty: 5, category: "Media/REAG.", unit: "組", unitPrice: 17000, batches: [] },
+        { id: 24, name: "解凍KIT", vendor: "東興", minQty: 5, category: "Media/REAG.", unit: "組", unitPrice: 17000, batches: [] },
+        { id: 27, name: "EmbryoGlue", vendor: "Vitrolife", minQty: 2, category: "Media/REAG.", unit: "瓶", unitPrice: 26500, batches: [] },
+        { id: 28, name: "Oil", vendor: "亞樸", minQty: 10, category: "Media/REAG.", unit: "瓶", unitPrice: 1500, batches: [] }
+      ]);
+
+      const [vendors, setVendors] = useState([
+        { id: 1, company: "東興", name: "", phone: "", email: "", note: "" },
+        { id: 2, company: "Vitrolife", name: "", phone: "", email: "", note: "" },
+        { id: 3, company: "億宸", name: "", phone: "", email: "", note: "" },
+        { id: 4, company: "亞樸", name: "", phone: "", email: "" , note: "" }
+      ]);
+
+      const [history, setHistory] = useState([]);
+      const [notices, setNotices] = useState([
+        { id: 1, text: "歡迎使用 LabStockTrack_BQ 系統！", date: "2026/04/25" }
+      ]);
+      const [noticeInput, setNoticeInput] = useState('');
+
+      // --- 雲端載入 ---
+      const fetchCloudData = async (silent = false) => {
+        if (!silent) setIsCloudLoading(true);
+        try {
+          const { data: inv } = await supabaseClient.from('inventory').select('*');
+          if (inv) setInventory(inv);
+
+          const { data: ven } = await supabaseClient.from('vendors').select('*');
+          if (ven) setVendors(ven);
+
+          const { data: his } = await supabaseClient.from('history').select('*').order('date', { ascending: false }).limit(200);
+          if (his) setHistory(his);
+
+          const { data: nts } = await supabaseClient.from('notices').select('*').order('date', { ascending: false });
+          if (nts) setNotices(nts);
+        } catch (error) {
+          console.error("雲端載入失敗:", error);
+        } finally {
+          if (!silent) setIsCloudLoading(false);
+        }
+      };
+
+      useEffect(() => {
+        fetchCloudData();
+      }, []);
+
+      // --- 雲端即時更新 (Realtime) ---
+      useEffect(() => {
+        const channel = supabaseClient
+          .channel('schema-db-changes')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchCloudData(true))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'vendors' }, () => fetchCloudData(true))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'history' }, () => fetchCloudData(true))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, () => fetchCloudData(true))
+          .subscribe();
+
+        return () => {
+          supabaseClient.removeChannel(channel);
+        };
+      }, []);
+
+      // --- 雲端儲存 (封裝成 Function 以便調用) ---
+      const syncInventoryToCloud = async (newData) => {
+        const { error } = await supabaseClient.from('inventory').upsert(newData);
+        if (error) console.error("同步庫存失敗:", error);
+      };
+
+      const syncHistoryToCloud = async (newLog) => {
+        const { error } = await supabaseClient.from('history').insert(newLog);
+        if (error) console.error("同步紀錄失敗:", error);
+      };
+
+      const syncVendorsToCloud = async (newData) => {
+        const { error } = await supabaseClient.from('vendors').upsert(newData);
+        if (error) console.error("同步廠商失敗:", error);
+      };
+
+      const syncNoticesToCloud = async (newNotices) => {
+        const { error } = await supabaseClient.from('notices').upsert(newNotices);
+        if (error) console.error("同步公告失敗:", error);
+      };
+
+      const handleAddNotice = async () => {
+        if (!noticeInput.trim()) return;
+        const newNotice = { text: noticeInput, date: formatDateTime().split(' ')[0] };
+        setNoticeInput('');
+        const { error } = await supabaseClient.from('notices').insert(newNotice);
+        if (error) console.error("同步公告失敗:", error);
+      };
+
+      const handleDeleteNotice = async (id) => {
+        const { error } = await supabaseClient.from('notices').delete().eq('id', id);
+        if (error) console.error("刪除公告失敗:", error);
+      };
+
+      const [searchTerm, setSearchTerm] = useState('');
+      const [traceDate, setTraceDate] = useState(new Date().getFullYear() + '/' + String(new Date().getMonth() + 1).padStart(2, '0') + '/' + String(new Date().getDate()).padStart(2, '0'));
+      const [purchaseMonth, setPurchaseMonth] = useState(new Date().getFullYear() + '/' + String(new Date().getMonth() + 1).padStart(2, '0'));
+      const [statsYear, setStatsYear] = useState(new Date().getFullYear().toString());
+
+      const formatDateTime = () => {
+        const d = new Date();
+        return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      };
+
+      const monthOptions = useMemo(() => {
+        const options = [];
+        for (let y = 2027; y >= 2025; y--) {
+          for (let m = 12; m >= 1; m--) {
+            const monthStr = String(m).padStart(2, '0');
+            options.push({ value: y + '/' + monthStr, label: y + ' 年 ' + monthStr + ' 月' });
+          }
+        }
+        return options;
+      }, []);
+
+      const [showInboundModal, setShowInboundModal] = useState(false);
+      const [inboundForm, setInboundForm] = useState({ itemId: null, batchNo: '', packageQty: 1, unitsPerPackage: 1, expiry: '', invoiceDate: '' });
+      const [showOutboundModal, setShowOutboundModal] = useState(false);
+      const [outboundForm, setOutboundForm] = useState({ itemId: null, batchId: '', qty: 1 });
+      const [showItemModal, setShowItemModal] = useState(false);
+      const [itemForm, setItemForm] = useState({ id: null, name: '', vendor: '', minQty: 1, category: 'Media/REAG.', unit: '個', unitPrice: '' });
+
+      const getTotalQty = (batches) => (batches || []).reduce((sum, b) => sum + Number(b.qty || 0), 0);
+      const getActiveBatches = (batches) => [...(batches || [])].filter(b => Number(b.qty) > 0).sort((a, b) => new Date(String(a.expiry || '').replace(/-/g, '/')) - new Date(String(b.expiry || '').replace(/-/g, '/')));
+
+      const purchaseReport = useMemo(() => {
+        const records = (history || [])
+          .filter(log => log.type === "入庫" && log.invoiceDate && log.invoiceDate.startsWith(purchaseMonth))
+          .map(log => {
+            const item = inventory.find(i => i.id == log.itemId);
+            const qty = parseInt(String(log.change || '0').replace('+', '')) || 0;
+            const price = item ? (Number(item.unitPrice) || 0) * qty : 0;
+            return { ...log, itemName: item?.name, vendor: item?.vendor, unit: item?.unit, unitPrice: item?.unitPrice, totalPrice: price };
+          });
+        return { records, totalMonthSpend: records.reduce((sum, r) => sum + (Number(r.totalPrice) || 0), 0) };
+      }, [history, inventory, purchaseMonth]);
+
+      const traceRecords = useMemo(() => {
+        if (!traceDate) return [];
+        const targetDateEnd = traceDate + " 23:59:59";
+        return inventory.filter(i => i.category === activeSubTab).map(item => {
+          const outLogs = (history || []).filter(log => log.itemId == item.id && log.type === "出庫" && log.date && log.date <= targetDateEnd);
+          outLogs.sort((a, b) => new Date(String(b.date || '').replace(/-/g, '/')) - new Date(String(a.date || '').replace(/-/g, '/')));
+          const recentLog = outLogs[0];
+          return { id: item.id, itemName: item.name, vendor: item.vendor, batchNo: recentLog ? recentLog.batchNo : '尚未啟用', startDate: recentLog ? String(recentLog.date || '').split(' ')[0] : '-' };
+        });
+      }, [history, traceDate, inventory, activeSubTab]);
+
+      const yearlyUsageStats = useMemo(() => {
+        const data = {};
+        inventory.forEach(i => { data[i.id] = { item: i, months: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 }, total: 0 }; });
+        history.forEach(log => {
+          if (log.type === "出庫" && log.date && log.date.startsWith(statsYear)) {
+            var month = parseInt(log.date.substring(5, 7), 10);
+            var qty = Math.abs(parseInt(String(log.change || '0'))) || 0;
+            if (data[log.itemId] && !isNaN(month)) { data[log.itemId].months[month] += qty; data[log.itemId].total += qty; }
+          }
+        });
+        return Object.values(data).sort((a, b) => (a.item.category || '').localeCompare(b.item.category || ''));
+      }, [history, inventory, statsYear]);
+
+      const alerts = useMemo(() => {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const thirtyLater = new Date(today); thirtyLater.setDate(today.getDate() + 30);
+        const lowStock = inventory.filter(item => getTotalQty(item.batches) <= item.minQty);
+        const expiringSoon = [];
+        inventory.forEach(item => {
+          (item.batches || []).forEach(batch => {
+            if (batch.qty > 0) {
+              const expDate = new Date(String(batch.expiry || '').replace(/-/g, '/'));
+              if (expDate <= thirtyLater) expiringSoon.push({ ...item, ...batch });
+            }
+          });
+        });
+        return { lowStock, expiringSoon };
+      }, [inventory]);
+
+      const [showVendorModal, setShowVendorModal] = useState(false);
+      const [vendorForm, setVendorForm] = useState({ id: null, company: '', name: '', phone: '', email: '', note: '' });
+
+      const handleSaveVendor = async (e) => {
+        e.preventDefault();
+        if (vendorForm.id) {
+          const { error } = await supabaseClient.from('vendors').update(vendorForm).eq('id', vendorForm.id);
+          if (error) console.error("更新廠商失敗:", error);
+        } else {
+          const { id, ...saveData } = vendorForm;
+          const { error } = await supabaseClient.from('vendors').insert(saveData);
+          if (error) console.error("新增廠商失敗:", error);
+        }
+        setShowVendorModal(false);
+      };
+
+      const handleDeleteVendor = async (id) => {
+        if (confirm('確定要刪除此廠商資訊嗎？')) {
+          const { error } = await supabaseClient.from('vendors').delete().eq('id', id);
+          if (error) console.error("刪除廠商失敗:", error);
+        }
+      };
+
+      const handleOutboundSubmit = async (e) => {
+        e.preventDefault();
+        const { itemId, batchId, qty } = outboundForm;
+        const item = inventory.find(i => i.id == itemId);
+        const targetBatch = item.batches.find(b => b.id == batchId);
+        if (!targetBatch || Number(targetBatch.qty) < Number(qty)) { alert('庫存不足'); return; }
+
+        const newBatches = item.batches.map(b => b.id == batchId ? { ...b, qty: Number(b.qty) - Number(qty) } : b);
+        const newLog = { itemId, type: "出庫", change: '-' + qty, batchNo: targetBatch.batchNo, user: "lab", date: formatDateTime() };
+
+        const { error: invErr } = await supabaseClient.from('inventory').update({ batches: newBatches }).eq('id', itemId);
+        const { error: logErr } = await supabaseClient.from('history').insert(newLog);
+        
+        if (invErr || logErr) console.error("出庫失敗:", invErr, logErr);
+        setShowOutboundModal(false);
+      };
+
+      const handleInbound = async (e) => {
+        e.preventDefault();
+        const { itemId, batchNo, packageQty, unitsPerPackage, expiry, invoiceDate } = inboundForm;
+        const total = Number(packageQty) * Number(unitsPerPackage);
+        const item = inventory.find(i => i.id == itemId);
+        const newBatches = (item.batches || []).map(b => ({ ...b, qty: Number(b.qty) }));
+        const existIdx = newBatches.findIndex(b => b.batchNo === batchNo && b.expiry === expiry.replace(/-/g, '/'));
+        
+        if (existIdx >= 0) newBatches[existIdx].qty += total;
+        else newBatches.push({ id: Date.now().toString(), batchNo, qty: total, expiry: expiry.replace(/-/g, '/') });
+        
+        const newLog = { itemId, type: '入庫', change: '+' + total, batchNo, invoiceDate: invoiceDate.replace(/-/g, '/'), user: 'lab', date: formatDateTime() };
+        
+        const { error: invErr } = await supabaseClient.from('inventory').update({ batches: newBatches }).eq('id', itemId);
+        const { error: logErr } = await supabaseClient.from('history').insert(newLog);
+
+        if (invErr || logErr) console.error("入庫失敗:", invErr, logErr);
+        setShowInboundModal(false);
+      };
+
+      const handleSaveItem = async (e) => {
+        e.preventDefault();
+        const saveData = { ...itemForm, unitPrice: Number(itemForm.unitPrice) || 0 };
+        if (saveData.id) {
+          const { error } = await supabaseClient.from('inventory').update(saveData).eq('id', saveData.id);
+          if (error) console.error("更新品項失敗:", error);
+        } else {
+          const { id, ...insertData } = saveData;
+          const { error } = await supabaseClient.from('inventory').insert({ ...insertData, batches: [] });
+          if (error) console.error("新增品項失敗:", error);
+        }
+        setShowItemModal(false);
+      };
+
+      const handleExportExcel = () => {
+        if (purchaseReport.records.length === 0) {
+          alert('本月尚無進貨紀錄可供匯出');
+          return;
+        }
+
+        const data = purchaseReport.records.map(r => ({
+          '發票日期': r.invoiceDate,
+          '品項名稱': r.itemName,
+          '廠牌': r.vendor,
+          '進貨數量': r.change,
+          '單位': r.unit,
+          '基準單價': r.unitPrice,
+          '小計金額': r.totalPrice
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "報帳明細");
+        
+        // 調整欄寬
+        const wscols = [
+          {wch: 15}, {wch: 30}, {wch: 15}, {wch: 10}, {wch: 8}, {wch: 12}, {wch: 12}
+        ];
+        worksheet['!cols'] = wscols;
+
+        XLSX.writeFile(workbook, `實驗室報帳表_${purchaseMonth.replace(/\//g, '_')}.xlsx`);
+      };
+
+      if (!isLoggedIn) {
+        return (
+          <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
+            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center">
+              <img src="app-icon.png" alt="Logo" className="w-24 h-24 mx-auto mb-6 object-contain" />
+              <h1 className="text-2xl font-bold mb-6">實驗室庫存管理系統</h1>
+              <form onSubmit={(e) => { e.preventDefault(); if (username === 'lab' && password === '1234') setIsLoggedIn(true); else setLoginError('密碼錯誤'); }} className="space-y-4">
+                <input type="text" className="w-full p-3 border rounded-xl outline-none" placeholder="帳號" value={username} onChange={e => setUsername(e.target.value)} />
+                <input type="password" className="w-full p-3 border rounded-xl outline-none" placeholder="密碼" value={password} onChange={e => setPassword(e.target.value)} />
+                {loginError && <p className="text-red-500 text-sm font-bold">{loginError}</p>}
+                <button className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg transition active:scale-95">登入系統</button>
+              </form>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row text-slate-800 animate-in font-sans">
+          {/* Sidebar */}
+          <nav className="bg-slate-900 text-white w-full md:w-64 p-6 flex flex-col shrink-0">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3 text-lg font-bold">
+                <img src="app-icon.png" className="w-8 h-8 object-contain" />
+                <span>LabStock</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isCloudLoading ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'}`}></div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{isCloudLoading ? 'Syncing' : 'Cloud Online'}</span>
+              </div>
+            </div>
+            <div className="flex-1 space-y-1">
+              {[
+                { id: 'inventory', label: '庫存清單', icon: Package },
+                { id: 'batches', label: '使用批號查詢', icon: Layers },
+                { id: 'history', label: '出入庫追蹤', icon: HistoryIcon },
+                { id: 'stats', label: '月使用量統計', icon: BarChart2 },
+                { id: 'purchase', label: '實驗室報帳', icon: FileText },
+                { id: 'vendors', label: '廠商聯絡', icon: (p) => <Icon name="phone" {...p} /> },
+                { id: 'settings', label: '品項設定', icon: Settings },
+              ].map(item => (
+                <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 p-3 rounded-xl transition ${activeTab === item.id ? 'bg-blue-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+                  <item.icon size={18} /> {item.label}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setIsLoggedIn(false)} className="mt-10 p-3 text-red-400 hover:bg-red-500/10 rounded-xl transition flex items-center gap-2 font-bold"><LogOut size={18} /> 登出</button>
+          </nav>
+
+          {/* Main */}
+          <main className="flex-1 p-6 md:p-10 overflow-y-auto h-screen">
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 bg-white p-6 rounded-2xl border shadow-sm gap-4">
+              <h2 className="text-2xl font-bold">
+                {activeTab === 'inventory' && '實驗室庫存清單'}
+                {activeTab === 'batches' && '當前庫存與優先使用批號 (FEFO)'}
+                {activeTab === 'history' && '出入庫追蹤'}
+                {activeTab === 'vendors' && '廠商業務聯絡資訊'}
+                {activeTab === 'stats' && '月使用量統計'}
+                {activeTab === 'purchase' && '實驗室報帳報表'}
+                {activeTab === 'settings' && '品項設定'}
+              </h2>
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input type="text" placeholder="搜尋項目..." className="w-full pl-10 pr-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              </div>
+            </header>
+
+
+            {/* --- Inventory Tab --- */}
+            {activeTab === 'inventory' && (
+              <div className="space-y-6 animate-in">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                  <div className="bg-white p-5 rounded-2xl border-l-4 border-l-rose-500 shadow-sm">
+                    <h3 className="text-rose-600 font-bold flex items-center gap-2 mb-3"><Bell size={18} /> 訂貨提醒 ({alerts.lowStock.length})</h3>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {alerts.lowStock.map(item => (
+                        <div key={item.id} className="flex justify-between text-sm p-2 bg-rose-50 rounded-lg">
+                          <span className="font-bold">{item.name}</span>
+                          <span className="text-rose-600 font-bold font-mono">{getTotalQty(item.batches)} / {item.minQty}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-white p-5 rounded-2xl border-l-4 border-l-amber-500 shadow-sm">
+                    <h3 className="text-amber-600 font-bold flex items-center gap-2 mb-3"><Calendar size={18} /> 效期預警 ({alerts.expiringSoon.length})</h3>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {alerts.expiringSoon.map((item, idx) => (
+                        <div key={idx} className="flex justify-between text-sm p-2 bg-amber-50 rounded-lg">
+                          <span className="font-bold">{item.name} <span className="text-[10px] text-slate-400 font-normal">({item.batchNo})</span></span>
+                          <span className="text-amber-600 font-bold font-mono">{item.expiry}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-white p-5 rounded-2xl border-l-4 border-l-sky-500 shadow-sm">
+                    <h3 className="text-sky-600 font-bold flex items-center gap-2 mb-3"><Icon name="message-square" size={18} /> 望周知</h3>
+                    <div className="space-y-2 max-h-24 overflow-y-auto mb-3">
+                      {notices.map(notice => (
+                        <div key={notice.id} className="flex justify-between items-start text-xs p-2 bg-sky-50 rounded-lg group">
+                          <div>
+                            <p className="font-bold text-slate-700">{notice.text}</p>
+                            <p className="text-[9px] text-sky-400 mt-1">{notice.date}</p>
+                          </div>
+                          <button onClick={() => handleDeleteNotice(notice.id)} className="text-rose-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input type="text" placeholder="輸入公告..." className="flex-1 text-xs p-2 border rounded-lg outline-none focus:ring-1 focus:ring-sky-500" value={noticeInput} onChange={e => setNoticeInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddNotice()} />
+                      <button onClick={handleAddNotice} className="bg-sky-500 text-white p-2 rounded-lg hover:bg-sky-600 transition"><PlusCircle size={14} /></button>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 mb-4 bg-slate-200 p-1 w-fit rounded-xl font-bold text-xs shadow-inner">
+                  {['Media/REAG.', 'CONS.'].map(t => (
+                    <button key={t} onClick={() => setActiveSubTab(t)} className={`px-6 py-2 rounded-lg transition ${activeSubTab === t ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>{t}</button>
+                  ))}
+                </div>
+                <div className="bg-white rounded-2xl border shadow-sm overflow-x-auto">
+                  <table className="w-full table-fixed text-left" style={{ minWidth: '600px' }}>
+                    <thead className="bg-slate-50 border-b text-slate-500 text-sm font-bold uppercase tracking-wider text-[10px]">
+                      <tr><th className="p-5" style={{ width: '50%' }}>項目</th><th className="p-5" style={{ width: '25%' }}>當前庫存</th><th className="p-5 text-center" style={{ width: '25%' }}>操作</th></tr>
+                    </thead>
+                    <tbody className="divide-y text-sm">
+                      {inventory.filter(i => i.category === activeSubTab && i.name.toLowerCase().includes(searchTerm.toLowerCase())).map(item => {
+                        const qty = getTotalQty(item.batches);
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50 transition border-b border-slate-100 last:border-0">
+                            <td className="p-4 md:p-5 whitespace-nowrap">
+                              <div className="text-lg md:text-xl font-black text-slate-800">{item.name}</div>
+                              <div className="text-[10px] text-slate-400 font-medium uppercase tracking-widest mt-1">{item.vendor}</div>
+                            </td>
+                            <td className="p-4 md:p-5 whitespace-nowrap">
+                              <span className={`px-3 py-1.5 md:px-4 md:py-2 rounded-xl font-black text-base md:text-lg shadow-sm inline-block ${qty <= item.minQty ? 'bg-rose-100 text-rose-600 border border-rose-200' : 'bg-emerald-100 text-emerald-700 border border-emerald-200'}`}>
+                                {qty} <span className="text-[9px] md:text-[10px] uppercase ml-1 font-bold">{item.unit}</span>
+                              </span>
+                            </td>
+                            <td className="p-5 text-center">
+                              <div className="flex justify-center gap-3">
+                                <button onClick={() => { setInboundForm({ itemId: item.id, batchNo: '', packageQty: 1, unitsPerPackage: 1, expiry: '', invoiceDate: new Date().getFullYear() + '/' + String(new Date().getMonth() + 1).padStart(2, '0') + '/' + String(new Date().getDate()).padStart(2, '0') }); setShowInboundModal(true); }} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-600 hover:text-white transition"><PlusCircle size={18} /></button>
+                                <button onClick={() => { const b = getActiveBatches(item.batches); if (b.length > 0) { setOutboundForm({ itemId: item.id, batchId: b[0].id, qty: 1 }); setShowOutboundModal(true); } }} disabled={qty === 0} className="p-2 text-rose-600 bg-rose-50 rounded-lg disabled:opacity-20 transition"><MinusCircle size={18} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* --- Batches Tab --- */}
+            {activeTab === 'batches' && (
+              <div className="space-y-10 animate-in">
+                {/* 1. 療程使用批號即時追蹤 (搜尋功能) */}
+                <div className="space-y-4">
+                  <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 flex flex-col md:flex-row justify-between items-center gap-4 shadow-sm">
+                    <h3 className="font-bold text-blue-800 flex items-center gap-2 text-lg"><Search size={22} /> 療程使用批號即時追蹤</h3>
+                    <div className="flex items-center gap-3">
+                      <span className="text-blue-600 text-sm font-bold">查詢日期:</span>
+                      <input type="text" value={traceDate} onChange={e => setTraceDate(e.target.value)} placeholder="YYYY/MM/DD" className="p-2 px-4 rounded-xl border border-blue-200 outline-none font-bold text-blue-800 bg-white shadow-sm focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-2xl border shadow-sm overflow-x-auto text-sm">
+                    <table className="w-full table-fixed text-left" style={{ minWidth: '500px' }}>
+                      <thead className="bg-blue-50/50 text-blue-800 font-bold border-b">
+                        <tr><th className="p-3 px-6 whitespace-nowrap" style={{ width: '34%' }}>項目名稱</th><th className="p-3 text-center whitespace-nowrap" style={{ width: '33%' }}>該日使用批號</th><th className="p-3 text-center whitespace-nowrap" style={{ width: '33%' }}>啟用日期</th></tr>
+                      </thead>
+                      <tbody className="divide-y font-medium">
+                        {traceRecords.map(r => (
+                          <tr key={r.id} className="hover:bg-blue-50/10 transition">
+                            <td className="p-3 px-6 font-bold whitespace-nowrap">{r.itemName}</td>
+                            <td className="p-3 font-mono text-blue-700 font-bold text-center whitespace-nowrap">{r.batchNo}</td>
+                            <td className="p-3 text-slate-400 font-mono text-xs text-center whitespace-nowrap">{r.startDate}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mb-4 bg-slate-200 p-1 w-fit rounded-xl font-bold text-xs shadow-inner">
+                  {['Media/REAG.', 'CONS.'].map(t => (
+                    <button key={t} onClick={() => setActiveSubTab(t)} className={`px-6 py-2 rounded-lg transition ${activeSubTab === t ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>{t}</button>
+                  ))}
+                </div>
+                {/* 2. 當前庫存與優先使用批號 (FEFO) */}
+                <div className="space-y-8 pt-6 border-t border-slate-100">
+                  <header className="px-2">
+                    <h2 className="text-xl font-bold text-slate-800">各品項當前批號狀態</h2>
+                    <p className="text-xs text-slate-400 mt-1 italic">藍色為優先消耗 (FEFO)，灰色為備用庫存</p>
+                  </header>
+
+                  <div className="space-y-12">
+                    {inventory.filter(i => i.category === activeSubTab && i.name.toLowerCase().includes(searchTerm.toLowerCase())).map(item => {
+                      const activeB = getActiveBatches(item.batches);
+                      const totalQty = getTotalQty(item.batches);
+
+                      return (
+                        <div key={item.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative transition hover:shadow-md">
+                          <div className="flex justify-between items-start mb-8">
+                            <div>
+                              <h3 className="text-2xl font-black text-slate-800 tracking-tight">{item.name}</h3>
+                              <span className="text-slate-400 text-xs font-medium uppercase tracking-widest">({item.vendor})</span>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Total Stock</div>
+                              <div className="bg-slate-900 text-white px-5 py-2 rounded-2xl text-sm font-black shadow-lg">
+                                {totalQty} <span className="text-slate-500 text-xs font-normal ml-1">{item.unit}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {activeB.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                              {activeB.map((batch, idx) => {
+                                const isFEFO = idx === 0;
+                                return (
+                                  <div key={batch.id} className={`p-6 rounded-3xl border-2 transition relative flex flex-col justify-between h-52 ${isFEFO ? 'border-blue-500 bg-blue-50/40 shadow-sm' : 'border-slate-100 bg-slate-50/50 hover:bg-white hover:border-slate-200'}`}>
+                                    {isFEFO && <div className="absolute -top-3 -right-3 bg-blue-600 text-white px-3 py-1 text-[10px] font-black rounded-lg shadow-md uppercase tracking-tighter z-10">Priority</div>}
+
+                                    <div>
+                                      <div className={`${isFEFO ? 'text-blue-600' : 'text-slate-400'} font-black text-[10px] mb-4 uppercase tracking-widest flex items-center gap-2`}>
+                                        {isFEFO && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>}
+                                        {isFEFO ? '優先消耗 (FEFO)' : '備用批次'}
+                                      </div>
+                                      <div className="space-y-3">
+                                        <div className="flex justify-between items-center border-b border-black/5 pb-2">
+                                          <span className="text-slate-400 text-[10px] font-black uppercase">Batch No</span>
+                                          <span className="text-slate-800 font-black font-mono text-base">{batch.batchNo}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-slate-400 text-[10px] font-black uppercase">Expiry</span>
+                                          <span className={`${isFEFO ? 'text-rose-600' : 'text-slate-500'} font-black font-mono text-base`}>{batch.expiry}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex justify-between items-end mt-4">
+                                      <span className="text-slate-400 text-[10px] font-black uppercase mb-1">Remaining</span>
+                                      <div className={`${isFEFO ? 'text-blue-700' : 'text-slate-700'} text-2xl font-black font-mono leading-none`}>
+                                        {batch.qty}
+                                        <span className="text-[10px] font-bold ml-1 uppercase">{item.unit}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="bg-slate-50 p-12 rounded-[2rem] border border-dashed border-slate-200 text-slate-400 text-center italic font-medium">目前無任何可用庫存批號</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* --- Vendors Tab --- */}
+            {activeTab === 'vendors' && (
+              <div className="space-y-6 animate-in">
+                <div className="flex justify-end">
+                  <button onClick={() => { setVendorForm({ id: null, company: '', name: '', phone: '', email: '', note: '' }); setShowVendorModal(true); }} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition active:scale-95">新增廠商聯絡</button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {vendors.map(v => (
+                    <div key={v.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative transition hover:shadow-md">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="bg-blue-100 text-blue-700 p-3 rounded-2xl"><Icon name="users" size={24} /></div>
+                        <div className="flex gap-1">
+                          <button onClick={() => { setVendorForm(v); setShowVendorModal(true); }} className="text-slate-300 hover:text-blue-600 p-2"><Edit2 size={18} /></button>
+                          <button onClick={() => handleDeleteVendor(v.id)} className="text-slate-300 hover:text-red-500 p-2"><X size={18} /></button>
+                        </div>
+                      </div>
+                      <h3 className="text-xl font-black text-slate-800 mb-1">{v.company}</h3>
+                      <p className="text-blue-600 font-bold mb-4">{v.name || '尚未填寫姓名'}</p>
+                      <div className="space-y-3 text-sm">
+                        <div className="flex items-center gap-3 text-slate-500 font-medium"><Icon name="phone" size={14} /> {v.phone || '-'}</div>
+                        <div className="flex items-center gap-3 text-slate-500 font-medium"><Icon name="mail" size={14} /> {v.email || '-'}</div>
+                        {v.note && <div className="mt-4 p-3 bg-slate-50 rounded-xl text-xs text-slate-400 italic">"{v.note}"</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* --- History Tab --- */}
+            {activeTab === 'history' && (
+              <div className="bg-white rounded-2xl border shadow-sm overflow-hidden text-sm animate-in">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b font-bold text-slate-400 tracking-widest text-[10px] uppercase">
+                    <tr><th className="p-4 text-center">時間</th><th className="p-4">品項</th><th className="p-4 text-center">動作</th><th className="p-4 text-center">變動</th><th className="p-4 text-center">批號</th></tr>
+                  </thead>
+                  <tbody className="divide-y text-slate-600">
+                    {history.map((log, idx) => {
+                      const item = inventory.find(i => i.id == log.itemId);
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50 transition">
+                          <td className="p-4 font-mono text-xs text-slate-400 text-center">{log.date}</td>
+                          <td className="p-4 font-bold text-slate-800">{item?.name || '已刪除項目'}</td>
+                          <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${log.type === '入庫' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{log.type}</span></td>
+                          <td className="p-4 text-center font-bold text-slate-800">{log.change}</td>
+                          <td className="p-4 text-center font-mono text-xs">{log.batchNo}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* --- Stats Tab --- */}
+            {activeTab === 'stats' && (
+              <div className="space-y-6 animate-in">
+                <div className="bg-white p-6 rounded-2xl border shadow-sm flex items-center gap-4">
+                  <label className="font-bold text-slate-600">統計年份：</label>
+                  <select value={statsYear} onChange={e => setStatsYear(e.target.value)} className="p-2 px-4 border rounded-xl font-bold bg-slate-50 cursor-pointer outline-none shadow-sm">
+                    <option value="2026">2026 年</option>
+                    <option value="2025">2025 年</option>
+                  </select>
+                </div>
+                <div className="bg-white rounded-2xl border shadow-sm overflow-x-auto text-[11px]">
+                  <table className="w-full text-left whitespace-nowrap">
+                    <thead className="bg-slate-100 text-slate-500 font-bold border-b">
+                      <tr><th className="p-3 sticky left-0 bg-slate-100 z-10 border-r">項目名稱</th>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => <th key={m} className="p-3 text-center">{m}月</th>)}<th className="p-3 text-center font-bold text-blue-700 bg-blue-50">總計</th></tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {yearlyUsageStats.map(({ item, months, total }) => (
+                        <tr key={item.id} className="hover:bg-slate-50 transition">
+                          <td className="p-3 font-bold sticky left-0 bg-white border-r">{item.name}</td>
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => <td key={m} className={`p-3 text-center ${months[m] > 0 ? 'font-bold text-slate-700' : 'text-slate-300'}`}>{months[m] > 0 ? months[m] : '-'}</td>)}
+                          <td className="p-3 text-center font-bold text-blue-600 bg-blue-50/50">{total > 0 ? total : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* --- Purchase Tab --- */}
+            {activeTab === 'purchase' && (
+              <div className="space-y-6 animate-in">
+                <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+                  <div className="flex items-center gap-4">
+                    <label className="font-bold text-slate-600">月份：</label>
+                    <select value={purchaseMonth} onChange={e => setPurchaseMonth(e.target.value)} className="p-2 px-4 border rounded-xl font-bold bg-slate-50 shadow-sm cursor-pointer outline-none">{monthOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select>
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <button onClick={handleExportExcel} className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition active:scale-95 text-sm">
+                      <FileText size={18} /> 匯出 Excel 報表
+                    </button>
+                    <div className="text-right">
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Total Spend</p>
+                      <h3 className="text-3xl font-extrabold text-blue-600 font-mono">NT$ {purchaseReport.totalMonthSpend.toLocaleString()}</h3>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-2xl border shadow-sm overflow-x-auto text-sm font-medium">
+                  <table className="w-full text-left font-sans">
+                    <thead className="bg-slate-50 border-b text-slate-400 font-bold uppercase text-[10px]">
+                      <tr><th className="p-4">發票日期</th><th className="p-4">品項</th><th className="p-4 text-center">數量</th><th className="p-4 text-right">單價</th><th className="p-4 text-right">小計</th></tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {purchaseReport.records.map((r, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 transition">
+                          <td className="p-4 font-mono text-xs text-slate-400">{r.invoiceDate}</td>
+                          <td className="p-4 font-bold text-slate-800">{r.itemName} <span className="text-[10px] text-slate-400 font-normal">({r.vendor})</span></td>
+                          <td className="p-4 text-center text-blue-600 font-bold">{r.change} {r.unit}</td>
+                          <td className="p-4 text-right font-mono text-slate-500">$ {r.unitPrice?.toLocaleString()}</td>
+                          <td className="p-4 text-right font-bold text-blue-600 font-mono">$ {r.totalPrice.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                      {purchaseReport.records.length === 0 && <tr><td colSpan="5" className="p-16 text-center text-slate-300 italic">無進貨紀錄</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* --- Settings Tab --- */}
+            {activeTab === 'settings' && (
+              <div className="space-y-6 animate-in">
+                <div className="flex justify-end"><button onClick={() => { setItemForm({ id: null, name: '', vendor: '', minQty: 1, category: activeSubTab, unit: '個', unitPrice: '' }); setShowItemModal(true); }} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition active:scale-95">新增品項</button></div>
+                <div className="flex gap-2 mb-4 bg-slate-200 p-1 w-fit rounded-xl font-bold text-xs shadow-inner">
+                  {['Media/REAG.', 'CONS.'].map(t => (
+                    <button key={t} onClick={() => setActiveSubTab(t)} className={`px-6 py-2 rounded-lg transition ${activeSubTab === t ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>{t}</button>
+                  ))}
+                </div>
+                <div className="bg-white rounded-2xl border shadow-sm overflow-x-auto text-sm font-medium">
+                  <table className="w-full table-fixed text-left" style={{ minWidth: '700px' }}>
+                    <thead className="bg-slate-50 border-b font-bold text-slate-500 uppercase text-[10px]">
+                      <tr><th className="p-4 whitespace-nowrap" style={{ width: '30%' }}>項目名稱</th><th className="p-4 whitespace-nowrap" style={{ width: '25%' }}>廠牌-訂貨商</th><th className="p-4 whitespace-nowrap" style={{ width: '15%' }}>單位</th><th className="p-4 text-right whitespace-nowrap" style={{ width: '15%' }}>基準單價</th><th className="p-4 text-center whitespace-nowrap" style={{ width: '15%' }}>操作</th></tr>
+                    </thead>
+                    <tbody className="divide-y text-slate-600">
+                      {inventory.filter(i => i.category === activeSubTab).map(item => (
+                        <tr key={item.id} className="hover:bg-slate-50 transition">
+                          <td className="p-4 font-bold text-slate-800 whitespace-nowrap">{item.name}</td>
+                          <td className="p-4 whitespace-nowrap">{item.vendor}</td>
+                          <td className="p-4 text-xs font-bold text-slate-400 whitespace-nowrap">{item.unit}</td>
+                          <td className="p-4 text-right text-blue-600 font-bold font-mono whitespace-nowrap">$ {item.unitPrice.toLocaleString()}</td>
+                          <td className="p-4 text-center whitespace-nowrap"><button onClick={() => { setItemForm({ ...item, unitPrice: String(item.unitPrice) }); setShowItemModal(true); }} className="text-slate-300 hover:text-blue-600 p-2"><Edit2 size={16} /></button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* Modals (Inbound/Outbound/Item) */}
+          {showInboundModal && (() => {
+            const item = inventory.find(i => i.id == inboundForm.itemId);
+            const totalInbound = Number(inboundForm.packageQty || 0) * Number(inboundForm.unitsPerPackage || 0);
+            return (
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in font-sans">
+                  <div className="p-6 border-b flex justify-between items-center bg-slate-50 font-bold">
+                    進貨登記 <button onClick={() => setShowInboundModal(false)}><X size={20} /></button>
+                  </div>
+                  <form onSubmit={handleInbound} className="p-6 space-y-5">
+                    <div>
+                      <label className="text-[10px] font-extrabold text-slate-400 block mb-1 uppercase tracking-widest">品項名稱</label>
+                      <input type="text" disabled className="w-full p-3 border rounded-xl bg-slate-50 font-bold text-slate-400" value={item?.name || ''} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-extrabold block mb-1 uppercase tracking-widest">批號</label>
+                        <input type="text" required className="w-full p-3 border rounded-xl font-mono uppercase font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" value={inboundForm.batchNo} onChange={e => setInboundForm({ ...inboundForm, batchNo: e.target.value.toUpperCase() })} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold block mb-1 uppercase tracking-widest">發票日期</label>
+                        <input type="text" required placeholder="YYYY/MM/DD" className="w-full p-3 border rounded-xl font-bold bg-blue-50 border-blue-100 outline-none shadow-sm" value={inboundForm.invoiceDate} onChange={e => setInboundForm({ ...inboundForm, invoiceDate: e.target.value })} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-extrabold block mb-1 uppercase tracking-widest">進貨箱數</label>
+                        <input type="number" required min="1" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" value={inboundForm.packageQty} onChange={e => setInboundForm({ ...inboundForm, packageQty: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold block mb-1 uppercase tracking-widest">每箱數量 ({item?.unit})</label>
+                        <input type="number" required min="1" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" value={inboundForm.unitsPerPackage} onChange={e => setInboundForm({ ...inboundForm, unitsPerPackage: e.target.value })} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-extrabold block mb-1 uppercase tracking-widest">有效期限 (YYYY/MM/DD)</label>
+                      <input type="text" required placeholder="YYYY/MM/DD" className="w-full p-3 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" value={inboundForm.expiry} onChange={e => setInboundForm({ ...inboundForm, expiry: e.target.value })} />
+                    </div>
+                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex justify-between items-center">
+                      <span className="text-blue-800 text-xs font-bold">預計入庫總數：</span>
+                      <span className="text-blue-600 font-black text-lg">{totalInbound} {item?.unit}</span>
+                    </div>
+                    <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-xl hover:bg-blue-700 transition active:scale-[0.98]">
+                      確認入庫登記
+                    </button>
+                  </form>
+                </div>
+              </div>
+            );
+          })()}
+
+          {showOutboundModal && (() => {
+            const item = inventory.find(i => i.id == outboundForm.itemId);
+            const activeB = getActiveBatches(item?.batches);
+            return (
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in">
+                  <div className="p-6 border-b flex justify-between items-center bg-slate-50 font-bold text-slate-800">出庫作業 <button onClick={() => setShowOutboundModal(false)}><X size={20} /></button></div>
+                  <form onSubmit={handleOutboundSubmit} className="p-6 space-y-5">
+                    <div><label className="text-[10px] font-extrabold text-slate-400 block mb-1 uppercase">項目</label><input type="text" disabled className="w-full p-3 border rounded-xl bg-slate-50 font-bold text-slate-400" value={item?.name} /></div>
+                    <div><label className="text-[10px] font-extrabold block mb-1 uppercase">批號 (FEFO 自動)</label>
+                      <select className="w-full p-3 border rounded-xl font-bold text-blue-700 outline-none" value={outboundForm.batchId} onChange={e => setOutboundForm({ ...outboundForm, batchId: e.target.value })}>
+                        {activeB.map(b => <option key={b.id} value={b.id}>{b.batchNo} (餘: {b.qty} / 效: {b.expiry})</option>)}
+                      </select>
+                    </div>
+                    <div><label className="text-[10px] font-extrabold block mb-1 uppercase">數量 ({item?.unit})</label><input type="number" min="1" className="w-full p-3 border rounded-xl font-bold outline-none" value={outboundForm.qty} onChange={e => setOutboundForm({ ...outboundForm, qty: Number(e.target.value) })} /></div>
+                    <button type="submit" className="w-full py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl hover:rose-700 transition active:scale-95">確認扣庫</button>
+                  </form>
+                </div>
+              </div>
+            );
+          })()}
+
+          {showItemModal && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in">
+                <div className="p-6 border-b flex justify-between items-center bg-slate-50 font-bold text-slate-800">品項設定 <button onClick={() => setShowItemModal(false)}><X size={20} /></button></div>
+                <form onSubmit={handleSaveItem} className="p-6 space-y-5 font-sans">
+                  <div className="flex gap-2 bg-slate-100 p-1 rounded-xl">
+                    {['Media/REAG.', 'CONS.'].map(cat => (
+                      <button type="button" key={cat} onClick={() => setItemForm({ ...itemForm, category: cat })} className={`flex-1 py-2 rounded-lg font-bold text-sm transition ${itemForm.category === cat ? 'bg-blue-600 text-white shadow' : 'text-slate-500'}`}>{cat}</button>
+                    ))}
+                  </div>
+                  <div><label className="text-[10px] font-extrabold block mb-1 uppercase">名稱</label><input type="text" required className="w-full p-3 border rounded-xl font-bold outline-none" value={itemForm.name} onChange={e => setItemForm({ ...itemForm, name: e.target.value })} /></div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><label className="text-[10px] font-extrabold block mb-1 uppercase">廠牌-訂貨商</label><input type="text" required className="w-full p-3 border rounded-xl font-bold" value={itemForm.vendor} onChange={e => setItemForm({ ...itemForm, vendor: e.target.value })} /></div>
+                    <div><label className="text-[10px] font-extrabold block mb-1 uppercase">單位</label><input type="text" required className="w-full p-3 border rounded-xl font-bold" value={itemForm.unit} onChange={e => setItemForm({ ...itemForm, unit: e.target.value })} /></div>
+                  </div>
+                  <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                    <label className="text-[10px] font-extrabold block mb-2 text-blue-800 uppercase flex items-center gap-1"><DollarSign size={14} /> 報帳用單價 (NT$)</label>
+                    <input type="number" required className="w-full p-3 border border-blue-200 rounded-xl font-bold text-blue-700 bg-white font-mono outline-none" value={itemForm.unitPrice} onChange={e => setItemForm({ ...itemForm, unitPrice: e.target.value })} />
+                  </div>
+                  <div><label className="text-[10px] font-extrabold block mb-1 uppercase text-rose-600">安全存量</label><input type="number" required min="0" className="w-full p-3 border border-rose-100 rounded-xl text-rose-500 font-bold bg-rose-50/20 outline-none" value={itemForm.minQty} onChange={e => setItemForm({ ...itemForm, minQty: Number(e.target.value) })} /></div>
+                  <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-xl hover:bg-blue-700 transition active:scale-95">儲存變更</button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {showVendorModal && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in">
+                <div className="p-6 border-b flex justify-between items-center bg-slate-50 font-bold text-slate-800">廠商資訊設定 <button onClick={() => setShowVendorModal(false)}><X size={20} /></button></div>
+                <form onSubmit={handleSaveVendor} className="p-6 space-y-5 font-sans">
+                  <div><label className="text-[10px] font-extrabold block mb-1 uppercase">廠商公司名稱</label><input type="text" required className="w-full p-3 border rounded-xl font-bold outline-none" value={vendorForm.company} onChange={e => setVendorForm({ ...vendorForm, company: e.target.value })} /></div>
+                  <div><label className="text-[10px] font-extrabold block mb-1 uppercase">業務姓名</label><input type="text" className="w-full p-3 border rounded-xl font-bold outline-none" value={vendorForm.name} onChange={e => setVendorForm({ ...vendorForm, name: e.target.value })} /></div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><label className="text-[10px] font-extrabold block mb-1 uppercase">聯絡電話</label><input type="text" className="w-full p-3 border rounded-xl font-bold" value={vendorForm.phone} onChange={e => setVendorForm({ ...vendorForm, phone: e.target.value })} /></div>
+                    <div><label className="text-[10px] font-extrabold block mb-1 uppercase">Email</label><input type="email" className="w-full p-3 border rounded-xl font-bold" value={vendorForm.email} onChange={e => setVendorForm({ ...vendorForm, email: e.target.value })} /></div>
+                  </div>
+                  <div><label className="text-[10px] font-extrabold block mb-1 uppercase text-slate-400">備註事項</label><textarea className="w-full p-3 border rounded-xl text-slate-600 font-medium bg-slate-50 outline-none" rows="3" value={vendorForm.note} onChange={e => setVendorForm({ ...vendorForm, note: e.target.value })}></textarea></div>
+                  <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-xl hover:bg-blue-700 transition active:scale-95">儲存廠商資訊</button>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<ErrorBoundary><App /></ErrorBoundary>);
+  </script>
 </body>
 
 </html>

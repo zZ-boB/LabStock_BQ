@@ -95,18 +95,15 @@ const App = () => {
     if (error) console.error("同步公告失敗:", error)
   }
 
-  const handleAddNotice = () => {
+  const handleAddNotice = async () => {
     if (!noticeInput.trim()) return
-    const newNotice = { id: Date.now(), text: noticeInput, date: formatDateTime().split(' ')[0] }
-    const updated = [newNotice, ...notices]
-    setNotices(updated)
+    const newNotice = { text: noticeInput, date: formatDateTime().split(' ')[0] }
     setNoticeInput('')
-    syncNoticesToCloud(updated)
+    const { error } = await supabaseClient.from('notices').insert(newNotice)
+    if (error) console.error("同步公告失敗:", error)
   }
 
   const handleDeleteNotice = async (id) => {
-    const updated = notices.filter(n => n.id !== id)
-    setNotices(updated)
     const { error } = await supabaseClient.from('notices').delete().eq('id', id)
     if (error) console.error("刪除公告失敗:", error)
   }
@@ -191,21 +188,19 @@ const App = () => {
 
   const handleSaveVendor = async (e) => {
     e.preventDefault()
-    let newVendors
     if (vendorForm.id) {
-      newVendors = vendors.map(v => v.id === vendorForm.id ? { ...vendorForm } : v)
+      const { error } = await supabaseClient.from('vendors').update(vendorForm).eq('id', vendorForm.id)
+      if (error) console.error("更新廠商失敗:", error)
     } else {
-      newVendors = [...vendors, { ...vendorForm, id: Date.now() }]
+      const { id, ...saveData } = vendorForm
+      const { error } = await supabaseClient.from('vendors').insert(saveData)
+      if (error) console.error("新增廠商失敗:", error)
     }
-    setVendors(newVendors)
-    syncVendorsToCloud(newVendors)
     setShowVendorModal(false)
   }
 
   const handleDeleteVendor = async (id) => {
     if (confirm('確定要刪除此廠商資訊嗎？')) {
-      const newVendors = vendors.filter(v => v.id !== id)
-      setVendors(newVendors)
       const { error } = await supabaseClient.from('vendors').delete().eq('id', id)
       if (error) console.error("刪除廠商失敗:", error)
     }
@@ -218,14 +213,13 @@ const App = () => {
     const targetBatch = item.batches.find(b => b.id == batchId)
     if (!targetBatch || Number(targetBatch.qty) < Number(qty)) { alert('庫存不足'); return }
 
-    const newInventory = inventory.map(i => i.id == itemId ? { ...i, batches: i.batches.map(b => b.id == batchId ? { ...b, qty: Number(b.qty) - Number(qty) } : b) } : i)
+    const newBatches = item.batches.map(b => b.id == batchId ? { ...b, qty: Number(b.qty) - Number(qty) } : b)
     const newLog = { itemId, type: "出庫", change: '-' + qty, batchNo: targetBatch.batchNo, user: "lab", date: formatDateTime() }
 
-    setInventory(newInventory)
-    setHistory([newLog, ...history])
-
-    syncInventoryToCloud(newInventory)
-    syncHistoryToCloud(newLog)
+    const { error: invErr } = await supabaseClient.from('inventory').update({ batches: newBatches }).eq('id', itemId)
+    const { error: logErr } = await supabaseClient.from('history').insert(newLog)
+    
+    if (invErr || logErr) console.error("出庫失敗:", invErr, logErr)
     setShowOutboundModal(false)
   }
 
@@ -240,28 +234,26 @@ const App = () => {
     if (existIdx >= 0) newBatches[existIdx].qty += total
     else newBatches.push({ id: Date.now().toString(), batchNo, qty: total, expiry: expiry.replace(/-/g, '/') })
 
-    const newInventory = inventory.map(i => i.id == itemId ? { ...i, batches: newBatches } : i)
     const newLog = { itemId, type: '入庫', change: '+' + total, batchNo, invoiceDate: invoiceDate.replace(/-/g, '/'), user: 'lab', date: formatDateTime() }
 
-    setInventory(newInventory)
-    setHistory([newLog, ...history])
+    const { error: invErr } = await supabaseClient.from('inventory').update({ batches: newBatches }).eq('id', itemId)
+    const { error: logErr } = await supabaseClient.from('history').insert(newLog)
 
-    syncInventoryToCloud(newInventory)
-    syncHistoryToCloud(newLog)
+    if (invErr || logErr) console.error("入庫失敗:", invErr, logErr)
     setShowInboundModal(false)
   }
 
   const handleSaveItem = async (e) => {
     e.preventDefault()
     const saveData = { ...itemForm, unitPrice: Number(itemForm.unitPrice) || 0 }
-    let newInventory
     if (saveData.id) {
-      newInventory = inventory.map(i => i.id == saveData.id ? { ...i, ...saveData } : i)
+      const { error } = await supabaseClient.from('inventory').update(saveData).eq('id', saveData.id)
+      if (error) console.error("更新品項失敗:", error)
     } else {
-      newInventory = [...inventory, { ...saveData, id: Date.now(), batches: [] }]
+      const { id, ...insertData } = saveData
+      const { error } = await supabaseClient.from('inventory').insert({ ...insertData, batches: [] })
+      if (error) console.error("新增品項失敗:", error)
     }
-    setInventory(newInventory)
-    syncInventoryToCloud(newInventory)
     setShowItemModal(false)
   }
 
