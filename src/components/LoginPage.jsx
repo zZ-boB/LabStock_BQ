@@ -8,9 +8,11 @@ const LoginPage = ({ onLogin }) => {
   const handleSubmit = (e) => {
     e.preventDefault()
     if (username === 'lab' && password === '1234') {
-      onLogin()
+      onLogin('user')
+    } else if (username === 'admin' && password === 'admin888') {
+      onLogin('admin')
     } else {
-      setLoginError('密碼錯誤')
+      setLoginError('帳號或密碼錯誤')
     }
   }
 

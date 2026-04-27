@@ -20,6 +20,7 @@ import VendorModal from './components/modals/VendorModal'
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [userRole, setUserRole] = useState('user')
   const [activeTab, setActiveTab] = useState('inventory')
   const [activeSubTab, setActiveSubTab] = useState('Media/REAG.')
   const [isCloudLoading, setIsCloudLoading] = useState(true)
@@ -257,6 +258,20 @@ const App = () => {
     setShowItemModal(false)
   }
 
+  const handleDeleteItem = async (id) => {
+    if (confirm('確定要永久刪除此品項及其所有紀錄嗎？此動作無法復原。')) {
+      const { error } = await supabaseClient.from('inventory').delete().eq('id', id)
+      if (error) console.error("刪除品項失敗:", error)
+    }
+  }
+
+  const handleDeleteHistory = async (id) => {
+    if (confirm('確定要刪除此筆變動紀錄嗎？')) {
+      const { error } = await supabaseClient.from('history').delete().eq('id', id)
+      if (error) console.error("刪除紀錄失敗:", error)
+    }
+  }
+
   const handleExportExcel = () => {
     if (purchaseReport.records.length === 0) {
       alert('本月尚無進貨紀錄可供匯出')
@@ -287,7 +302,7 @@ const App = () => {
   }
 
   if (!isLoggedIn) {
-    return <LoginPage onLogin={() => setIsLoggedIn(true)} />
+    return <LoginPage onLogin={(role) => { setIsLoggedIn(true); setUserRole(role); }} />
   }
 
   return (
@@ -314,7 +329,7 @@ const App = () => {
           />
         )}
 
-        {activeTab === 'history' && <HistoryTab history={history} inventory={inventory} />}
+        {activeTab === 'history' && <HistoryTab history={history} inventory={inventory} userRole={userRole} onDelete={handleDeleteHistory} />}
 
         {activeTab === 'stats' && <StatsTab statsYear={statsYear} setStatsYear={setStatsYear} yearlyUsageStats={yearlyUsageStats} />}
 
@@ -330,7 +345,7 @@ const App = () => {
         )}
 
         {activeTab === 'settings' && (
-          <SettingsTab inventory={inventory} activeSubTab={activeSubTab} setActiveSubTab={setActiveSubTab} setItemForm={setItemForm} setShowItemModal={setShowItemModal} />
+          <SettingsTab inventory={inventory} activeSubTab={activeSubTab} setActiveSubTab={setActiveSubTab} setItemForm={setItemForm} setShowItemModal={setShowItemModal} userRole={userRole} onDeleteItem={handleDeleteItem} />
         )}
       </main>
 
