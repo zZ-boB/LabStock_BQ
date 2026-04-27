@@ -20,12 +20,14 @@
     rel="stylesheet">
   <style>
     html {
-      font-size: 95%; /* 手機端稍微縮小一點確保不換行 */
+      font-size: 95%;
+      /* 手機端稍微縮小一點確保不換行 */
     }
 
     @media (min-width: 768px) {
       html {
-        font-size: 110%; /* 電腦端維持放大 */
+        font-size: 110%;
+        /* 電腦端維持放大 */
       }
     }
 
@@ -144,7 +146,7 @@
         { id: 1, company: "東興", name: "", phone: "", email: "", note: "" },
         { id: 2, company: "Vitrolife", name: "", phone: "", email: "", note: "" },
         { id: 3, company: "億宸", name: "", phone: "", email: "", note: "" },
-        { id: 4, company: "亞樸", name: "", phone: "", email: "" , note: "" }
+        { id: 4, company: "亞樸", name: "", phone: "", email: "", note: "" }
       ]);
 
       const [history, setHistory] = useState([]);
@@ -252,7 +254,7 @@
       const [showInboundModal, setShowInboundModal] = useState(false);
       const [inboundForm, setInboundForm] = useState({ itemId: null, batchNo: '', packageQty: 1, unitsPerPackage: 1, expiry: '', invoiceDate: '' });
       const [showOutboundModal, setShowOutboundModal] = useState(false);
-      const [outboundForm, setOutboundForm] = useState({ itemId: null, batchId: '', qty: 1 });
+      const [outboundForm, setOutboundForm] = useState({ itemId: null, batchId: '', qty: 1, startDate: '' });
       const [showItemModal, setShowItemModal] = useState(false);
       const [itemForm, setItemForm] = useState({ id: null, name: '', vendor: '', minQty: 1, category: 'Media/REAG.', unit: '個', unitPrice: '' });
 
@@ -336,19 +338,19 @@
 
       const handleOutboundSubmit = async (e) => {
         e.preventDefault();
-        const { itemId, batchId, qty } = outboundForm;
+        const { itemId, batchId, qty, startDate } = outboundForm;
         if (Number(qty) < 1) { alert('出庫數量必須至少為 1'); return; }
-        
+
         const item = inventory.find(i => i.id == itemId);
         const targetBatch = item.batches.find(b => b.id == batchId);
         if (!targetBatch || Number(targetBatch.qty) < Number(qty)) { alert(`庫存不足！當前批號庫存僅剩 ${targetBatch ? targetBatch.qty : 0}`); return; }
 
         const newBatches = item.batches.map(b => b.id == batchId ? { ...b, qty: Number(b.qty) - Number(qty) } : b);
-        const newLog = { itemId, type: "出庫", change: '-' + qty, batchNo: targetBatch.batchNo, user: "lab", date: formatDateTime() };
+        const newLog = { itemId, type: "出庫", change: '-' + qty, batchNo: targetBatch.batchNo, user: "lab", date: startDate || formatDateTime() };
 
         const { error: invErr } = await supabaseClient.from('inventory').update({ batches: newBatches }).eq('id', itemId);
         const { error: logErr } = await supabaseClient.from('history').insert(newLog);
-        
+
         if (invErr || logErr) console.error("出庫失敗:", invErr, logErr);
         setShowOutboundModal(false);
       };
@@ -357,17 +359,17 @@
         e.preventDefault();
         const { itemId, batchNo, packageQty, unitsPerPackage, expiry, invoiceDate } = inboundForm;
         if (Number(packageQty) < 1 || Number(unitsPerPackage) < 1) { alert('進貨數量必須至少為 1'); return; }
-        
+
         const total = Number(packageQty) * Number(unitsPerPackage);
         const item = inventory.find(i => i.id == itemId);
         const newBatches = (item.batches || []).map(b => ({ ...b, qty: Number(b.qty) }));
         const existIdx = newBatches.findIndex(b => b.batchNo === batchNo && b.expiry === expiry.replace(/-/g, '/'));
-        
+
         if (existIdx >= 0) newBatches[existIdx].qty += total;
         else newBatches.push({ id: Date.now().toString(), batchNo, qty: total, expiry: expiry.replace(/-/g, '/') });
-        
+
         const newLog = { itemId, type: '入庫', change: '+' + total, batchNo, invoiceDate: invoiceDate.replace(/-/g, '/'), user: 'lab', date: formatDateTime() };
-        
+
         const { error: invErr } = await supabaseClient.from('inventory').update({ batches: newBatches }).eq('id', itemId);
         const { error: logErr } = await supabaseClient.from('history').insert(newLog);
 
@@ -408,10 +410,10 @@
         const worksheet = XLSX.utils.json_to_sheet(data);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "報帳明細");
-        
+
         // 調整欄寬
         const wscols = [
-          {wch: 15}, {wch: 30}, {wch: 15}, {wch: 10}, {wch: 8}, {wch: 12}, {wch: 12}
+          { wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 12 }
         ];
         worksheet['!cols'] = wscols;
 
@@ -558,7 +560,7 @@
                             <td className="p-5 text-center">
                               <div className="flex justify-center gap-3">
                                 <button onClick={() => { setInboundForm({ itemId: item.id, batchNo: '', packageQty: 1, unitsPerPackage: 1, expiry: '', invoiceDate: new Date().getFullYear() + '/' + String(new Date().getMonth() + 1).padStart(2, '0') + '/' + String(new Date().getDate()).padStart(2, '0') }); setShowInboundModal(true); }} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-600 hover:text-white transition"><PlusCircle size={18} /></button>
-                                <button onClick={() => { const b = getActiveBatches(item.batches); if (b.length > 0) { setOutboundForm({ itemId: item.id, batchId: b[0].id, qty: 1 }); setShowOutboundModal(true); } }} disabled={qty === 0} className="p-2 text-rose-600 bg-rose-50 rounded-lg disabled:opacity-20 transition"><MinusCircle size={18} /></button>
+                                <button onClick={() => { const b = getActiveBatches(item.batches); if (b.length > 0) { setOutboundForm({ itemId: item.id, batchId: b[0].id, qty: 1, startDate: formatDateTime() }); setShowOutboundModal(true); } }} disabled={qty === 0} className="p-2 text-rose-600 bg-rose-50 rounded-lg disabled:opacity-20 transition"><MinusCircle size={18} /></button>
                               </div>
                             </td>
                           </tr>
@@ -899,6 +901,7 @@
                         {activeB.map(b => <option key={b.id} value={b.id}>{b.batchNo} (餘: {b.qty} / 效: {b.expiry})</option>)}
                       </select>
                     </div>
+                    <div><label className="text-[10px] font-extrabold block mb-1 uppercase text-blue-600">啟用時間 (可修改)</label><input type="text" className="w-full p-3 border border-blue-100 rounded-xl font-bold bg-blue-50 outline-none" value={outboundForm.startDate} onChange={e => setOutboundForm({ ...outboundForm, startDate: e.target.value })} /></div>
                     <div><label className="text-[10px] font-extrabold block mb-1 uppercase">數量 ({item?.unit})</label><input type="number" required min="1" max={activeB.find(b => b.id == outboundForm.batchId)?.qty || 1} className="w-full p-3 border rounded-xl font-bold outline-none" value={outboundForm.qty} onChange={e => setOutboundForm({ ...outboundForm, qty: Number(e.target.value) })} /></div>
                     <button type="submit" className="w-full py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl hover:rose-700 transition active:scale-95">確認扣庫</button>
                   </form>
