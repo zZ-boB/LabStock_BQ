@@ -834,15 +834,25 @@
                 <div className="bg-white rounded-2xl border shadow-sm overflow-x-auto text-sm font-medium">
                   <table className="w-full table-fixed text-left" style={{ minWidth: '700px' }}>
                     <thead className="bg-slate-50 border-b font-bold text-slate-500 uppercase text-[10px]">
-                      <tr><th className="p-4 whitespace-nowrap" style={{ width: '30%' }}>項目名稱</th><th className="p-4 whitespace-nowrap" style={{ width: '25%' }}>廠牌-訂貨商</th><th className="p-4 whitespace-nowrap" style={{ width: '15%' }}>單位</th><th className="p-4 text-right whitespace-nowrap" style={{ width: '15%' }}>基準單價</th><th className="p-4 text-center whitespace-nowrap" style={{ width: '15%' }}>操作</th></tr>
+                      <tr>
+                        <th className="p-4 whitespace-nowrap" style={{ width: '22%' }}>項目名稱</th>
+                        <th className="p-4 whitespace-nowrap" style={{ width: '18%' }}>廠牌-訂貨商</th>
+                        <th className="p-4 whitespace-nowrap text-center" style={{ width: '12%' }}>單位</th>
+                        <th className="p-4 text-right whitespace-nowrap" style={{ width: '16%' }}>基準單價</th>
+                        <th className="p-4 text-center whitespace-nowrap" style={{ width: '16%' }}>安全存量</th>
+                        <th className="p-4 text-center whitespace-nowrap" style={{ width: '16%' }}>操作</th>
+                      </tr>
                     </thead>
                     <tbody className="divide-y text-slate-600">
                       {inventory.filter(i => i.category === activeSubTab).map(item => (
                         <tr key={item.id} className="hover:bg-slate-50 transition">
                           <td className="p-4 font-bold text-slate-800 whitespace-nowrap">{item.name}</td>
                           <td className="p-4 whitespace-nowrap">{item.vendor}</td>
-                          <td className="p-4 text-xs font-bold text-slate-400 whitespace-nowrap">{item.unit}</td>
+                          <td className="p-4 text-xs font-bold text-slate-400 whitespace-nowrap text-center">{item.unit}</td>
                           <td className="p-4 text-right text-blue-600 font-bold font-mono whitespace-nowrap">$ {item.unitPrice.toLocaleString()}</td>
+                          <td className="p-4 text-center whitespace-nowrap">
+                            <span className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg font-bold border border-rose-100">{item.minQty}</span>
+                          </td>
                           <td className="p-4 text-center whitespace-nowrap"><button onClick={() => { setItemForm({ ...item, unitPrice: String(item.unitPrice) }); setShowItemModal(true); }} className="text-slate-300 hover:text-blue-600 p-2"><Edit2 size={16} /></button></td>
                         </tr>
                       ))}
