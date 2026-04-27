@@ -266,9 +266,32 @@ const App = () => {
   }
 
   const handleDeleteHistory = async (id) => {
-    if (confirm('確定要刪除此筆變動紀錄嗎？')) {
-      const { error } = await supabaseClient.from('history').delete().eq('id', id)
-      if (error) console.error("刪除紀錄失敗:", error)
+    const log = history.find(h => h.id == id)
+    if (!log) return
+    
+    if (confirm(`確定要刪除這筆【${log.type}】紀錄嗎？\n系統將自動「反向更新」庫存：\n${log.type === '入庫' ? '➔ 扣除' : '➔ 補回'} ${Math.abs(parseInt(log.change))} 個單位`)) {
+      try {
+        const item = inventory.find(i => i.id == log.itemId)
+        if (item) {
+          const changeVal = parseInt(log.change)
+          const newBatches = (item.batches || []).map(b => {
+            if (b.batchNo === log.batchNo) {
+              // 如果是入庫(+)，刪除時就減回去；如果是出庫(-)，刪除時就加回來
+              return { ...b, qty: Number(b.qty) - changeVal }
+            }
+            return b
+          })
+          
+          const { error: invErr } = await supabaseClient.from('inventory').update({ batches: newBatches }).eq('id', log.itemId)
+          if (invErr) throw invErr
+        }
+        
+        const { error: logErr } = await supabaseClient.from('history').delete().eq('id', id)
+        if (logErr) throw logErr
+      } catch (error) {
+        console.error("回滾庫存或刪除紀錄失敗:", error)
+        alert("操作失敗，請檢查網路連線或聯繫開發人員")
+      }
     }
   }
 

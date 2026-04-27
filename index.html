@@ -239,9 +239,31 @@
       };
 
       const handleDeleteHistory = async (id) => {
-        if (confirm('確定要刪除此筆變動紀錄嗎？')) {
-          const { error } = await supabaseClient.from('history').delete().eq('id', id);
-          if (error) console.error("刪除紀錄失敗:", error);
+        const log = history.find(h => h.id == id);
+        if (!log) return;
+
+        if (confirm(`確定要刪除這筆【${log.type}】紀錄嗎？\n系統將自動「反向更新」庫存：\n${log.type === '入庫' ? '➔ 扣除' : '➔ 補回'} ${Math.abs(parseInt(log.change))} 個單位`)) {
+          try {
+            const item = inventory.find(i => i.id == log.itemId);
+            if (item) {
+              const changeVal = parseInt(log.change);
+              const newBatches = (item.batches || []).map(b => {
+                if (b.batchNo === log.batchNo) {
+                  return { ...b, qty: Number(b.qty) - changeVal };
+                }
+                return b;
+              });
+
+              const { error: invErr } = await supabaseClient.from('inventory').update({ batches: newBatches }).eq('id', log.itemId);
+              if (invErr) throw invErr;
+            }
+
+            const { error: logErr } = await supabaseClient.from('history').delete().eq('id', id);
+            if (logErr) throw logErr;
+          } catch (error) {
+            console.error("回滾庫存或刪除紀錄失敗:", error);
+            alert("操作失敗，請檢查網路連線或聯繫開發人員");
+          }
         }
       };
 
@@ -598,7 +620,7 @@
                             <td className="p-5 text-center">
                               <div className="flex justify-center gap-3">
                                 <button onClick={() => { setInboundForm({ itemId: item.id, batchNo: '', packageQty: 1, unitsPerPackage: 1, expiry: '', invoiceDate: new Date().getFullYear() + '/' + String(new Date().getMonth() + 1).padStart(2, '0') + '/' + String(new Date().getDate()).padStart(2, '0') }); setShowInboundModal(true); }} className="p-3 text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-600 hover:text-white transition"><PlusCircle size={22} /></button>
-                                <button onClick={() => { const b = getActiveBatches(item.batches); if (b.length > 0) { setOutboundForm({ itemId: item.id, batchId: b[0].id, qty: 1, startDate: formatDateTime() }); setShowOutboundModal(true); } }} disabled={qty === 0} className="p-3 text-rose-600 bg-rose-50 rounded-xl disabled:opacity-20 transition"><MinusCircle size={22} /></button>
+                                <button onClick={() => { const b = getActiveBatches(item.batches); if (b.length > 0) { setOutboundForm({ itemId: item.id, batchId: b[0].id, qty: 1, startDate: formatDateTime() }); setShowOutboundModal(true); } }} disabled={qty === 0} className="p-3 text-rose-600 bg-rose-50 rounded-xl hover:bg-rose-600 hover:text-white disabled:opacity-20 transition"><MinusCircle size={22} /></button>
                               </div>
                             </td>
                           </tr>

@@ -87,7 +87,7 @@ const InventoryTab = ({
                   <td className="p-5 text-center">
                     <div className="flex justify-center gap-3">
                       <button onClick={() => { setInboundForm({ itemId: item.id, batchNo: '', packageQty: 1, unitsPerPackage: 1, expiry: '', invoiceDate: getDefaultDate() }); setShowInboundModal(true); }} className="p-3 text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-600 hover:text-white transition"><PlusCircle size={22} /></button>
-                      <button onClick={() => { const b = getActiveBatches(item.batches); if (b.length > 0) { setOutboundForm({ itemId: item.id, batchId: b[0].id, qty: 1 }); setShowOutboundModal(true); } }} disabled={qty === 0} className="p-3 text-rose-600 bg-rose-50 rounded-xl disabled:opacity-20 transition"><MinusCircle size={22} /></button>
+                      <button onClick={() => { const b = getActiveBatches(item.batches); if (b.length > 0) { setOutboundForm({ itemId: item.id, batchId: b[0].id, qty: 1 }); setShowOutboundModal(true); } }} disabled={qty === 0} className="p-3 text-rose-600 bg-rose-50 rounded-xl hover:bg-rose-600 hover:text-white disabled:opacity-20 transition"><MinusCircle size={22} /></button>
                     </div>
                   </td>
                 </tr>
