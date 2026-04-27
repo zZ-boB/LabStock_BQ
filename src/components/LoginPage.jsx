@@ -9,7 +9,7 @@ const LoginPage = ({ onLogin }) => {
     e.preventDefault()
     if (username === 'lab' && password === '1234') {
       onLogin('user')
-    } else if (username === 'admin' && password === 'admin888') {
+    } else if (username === 'admin' && password === 'admin') {
       onLogin('admin')
     } else {
       setLoginError('帳號或密碼錯誤')

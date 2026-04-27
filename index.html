@@ -484,7 +484,7 @@
               <form onSubmit={(e) => { 
                 e.preventDefault(); 
                 if (username === 'lab' && password === '1234') { setIsLoggedIn(true); setUserRole('user'); }
-                else if (username === 'admin' && password === 'admin888') { setIsLoggedIn(true); setUserRole('admin'); }
+                else if (username === 'admin' && password === 'admin') { setIsLoggedIn(true); setUserRole('admin'); }
                 else setLoginError('帳號或密碼錯誤'); 
               }} className="space-y-4">
                 <input type="text" className="w-full p-3 border rounded-xl outline-none" placeholder="帳號" value={username} onChange={e => setUsername(e.target.value)} />
