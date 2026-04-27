@@ -29,11 +29,11 @@ const InboundModal = ({ inventory, inboundForm, setInboundForm, onSubmit, onClos
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] font-extrabold block mb-1 uppercase tracking-widest">進貨箱數</label>
-              <input type="number" required min="1" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" value={inboundForm.packageQty} onChange={e => setInboundForm({ ...inboundForm, packageQty: e.target.value })} />
+              <input type="number" required min="0" step="any" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" value={inboundForm.packageQty} onChange={e => setInboundForm({ ...inboundForm, packageQty: e.target.value })} />
             </div>
             <div>
               <label className="text-[10px] font-extrabold block mb-1 uppercase tracking-widest">每箱數量 ({item?.unit})</label>
-              <input type="number" required min="1" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" value={inboundForm.unitsPerPackage} onChange={e => setInboundForm({ ...inboundForm, unitsPerPackage: e.target.value })} />
+              <input type="number" required min="0" step="any" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" value={inboundForm.unitsPerPackage} onChange={e => setInboundForm({ ...inboundForm, unitsPerPackage: e.target.value })} />
             </div>
           </div>
           <div>

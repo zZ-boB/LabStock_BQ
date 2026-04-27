@@ -17,7 +17,7 @@ const OutboundModal = ({ inventory, outboundForm, setOutboundForm, onSubmit, onC
               {activeB.map(b => <option key={b.id} value={b.id}>{b.batchNo} (餘: {b.qty} / 效: {b.expiry})</option>)}
             </select>
           </div>
-          <div><label className="text-[10px] font-extrabold block mb-1 uppercase">數量 ({item?.unit})</label><input type="number" min="1" className="w-full p-3 border rounded-xl font-bold outline-none" value={outboundForm.qty} onChange={e => setOutboundForm({ ...outboundForm, qty: Number(e.target.value) })} /></div>
+          <div><label className="text-[10px] font-extrabold block mb-1 uppercase">數量 ({item?.unit})</label><input type="number" min="0" step="any" className="w-full p-3 border rounded-xl font-bold outline-none" value={outboundForm.qty} onChange={e => setOutboundForm({ ...outboundForm, qty: Number(e.target.value) })} /></div>
           <button type="submit" className="w-full py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl hover:bg-rose-700 transition active:scale-95">確認扣庫</button>
         </form>
       </div>
