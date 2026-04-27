@@ -275,14 +275,31 @@
 
       const traceRecords = useMemo(() => {
         if (!traceDate) return [];
-        const targetDateEnd = traceDate + " 23:59:59";
-        return inventory.filter(i => i.category === activeSubTab).map(item => {
-          const outLogs = (history || []).filter(log => log.itemId == item.id && log.type === "出庫" && log.date && log.date <= targetDateEnd);
-          outLogs.sort((a, b) => new Date(String(b.date || '').replace(/-/g, '/')) - new Date(String(a.date || '').replace(/-/g, '/')));
-          const recentLog = outLogs[0];
-          return { id: item.id, itemName: item.name, vendor: item.vendor, batchNo: recentLog ? recentLog.batchNo : '尚未啟用', startDate: recentLog ? String(recentLog.date || '').split(' ')[0] : '-' };
-        });
-      }, [history, traceDate, inventory, activeSubTab]);
+        const targetDateEndStr = traceDate.includes(' ') ? traceDate : traceDate + " 23:59:59";
+        const targetDateEnd = new Date(targetDateEndStr.replace(/-/g, '/'));
+
+        return inventory
+          .filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()))
+          .map(item => {
+            const outLogs = (history || []).filter(log => {
+              if (log.itemId != item.id || log.type !== "出庫" || !log.date) return false;
+              const logDate = new Date(String(log.date).replace(/-/g, '/'));
+              return logDate <= targetDateEnd;
+            });
+            
+            // 排序：日期越晚的越優先，若日期相同則以 history 陣列中的順序為準（通常是最新的一筆）
+            outLogs.sort((a, b) => new Date(String(b.date).replace(/-/g, '/')) - new Date(String(a.date).replace(/-/g, '/')));
+            
+            const recentLog = outLogs[0];
+            return { 
+              id: item.id, 
+              itemName: item.name, 
+              vendor: item.vendor, 
+              batchNo: recentLog ? recentLog.batchNo : '尚未啟用', 
+              startDate: recentLog ? String(recentLog.date || '').split(' ')[0] : '-' 
+            };
+          });
+      }, [history, traceDate, inventory, searchTerm]);
 
       const yearlyUsageStats = useMemo(() => {
         const data = {};
@@ -346,7 +363,8 @@
         if (!targetBatch || Number(targetBatch.qty) < Number(qty)) { alert(`庫存不足！當前批號庫存僅剩 ${targetBatch ? targetBatch.qty : 0}`); return; }
 
         const newBatches = item.batches.map(b => b.id == batchId ? { ...b, qty: Number(b.qty) - Number(qty) } : b);
-        const newLog = { itemId, type: "出庫", change: '-' + qty, batchNo: targetBatch.batchNo, user: "lab", date: startDate || formatDateTime() };
+        const normalizedDate = (startDate || formatDateTime()).replace(/-/g, '/');
+        const newLog = { itemId, type: "出庫", change: '-' + qty, batchNo: targetBatch.batchNo, user: "lab", date: normalizedDate };
 
         const { error: invErr } = await supabaseClient.from('inventory').update({ batches: newBatches }).eq('id', itemId);
         const { error: logErr } = await supabaseClient.from('history').insert(newLog);
