@@ -242,10 +242,15 @@
         const log = history.find(h => h.id == id);
         if (!log) return;
 
-        if (confirm(`確定要刪除這筆【${log.type}】紀錄嗎？\n系統將自動「反向更新」庫存：\n${log.type === '入庫' ? '➔ 扣除' : '➔ 補回'} ${Math.abs(parseInt(log.change))} 個單位`)) {
+        let msg = `確定要刪除這筆【${log.type}】紀錄嗎？`;
+        if (log.type === '入庫' || log.type === '出庫') {
+            msg += `\n系統將自動「反向更新」庫存：\n${log.type === '入庫' ? '➔ 扣除' : '➔ 補回'} ${Math.abs(parseInt(log.change))} 個單位`;
+        }
+
+        if (confirm(msg)) {
           try {
             const item = inventory.find(i => i.id == log.itemId);
-            if (item) {
+            if (item && (log.type === '入庫' || log.type === '出庫')) {
               const changeVal = parseInt(log.change);
               const newBatches = (item.batches || []).map(b => {
                 if (b.batchNo === log.batchNo) {
@@ -292,6 +297,8 @@
       const [inboundForm, setInboundForm] = useState({ itemId: null, batchNo: '', packageQty: 1, unitsPerPackage: 1, expiry: '', invoiceDate: '' });
       const [showOutboundModal, setShowOutboundModal] = useState(false);
       const [outboundForm, setOutboundForm] = useState({ itemId: null, batchId: '', qty: 1, startDate: '' });
+      const [showOrderModal, setShowOrderModal] = useState(false);
+      const [orderForm, setOrderForm] = useState({ itemId: null, qty: 1, expectedDate: '' });
       const [showItemModal, setShowItemModal] = useState(false);
       const [itemForm, setItemForm] = useState({ id: null, name: '', vendor: '', minQty: 1, category: 'Media/REAG.', unit: '個', unitPrice: '' });
 
@@ -432,6 +439,25 @@
         setShowInboundModal(false);
       };
 
+      const handleOrderSubmit = async (e) => {
+        e.preventDefault();
+        const { itemId, qty, expectedDate } = orderForm;
+        if (Number(qty) <= 0) { alert('訂貨數量必須大於 0'); return; }
+        
+        const newLog = { 
+          itemId, 
+          type: '叫貨', 
+          change: '+' + qty, 
+          batchNo: '預計到貨: ' + expectedDate, 
+          user: 'lab', 
+          date: formatDateTime() 
+        };
+
+        const { error } = await supabaseClient.from('history').insert(newLog);
+        if (error) console.error("叫貨紀錄失敗:", error);
+        setShowOrderModal(false);
+      };
+
       const handleSaveItem = async (e) => {
         e.preventDefault();
         const saveData = { ...itemForm, unitPrice: Number(itemForm.unitPrice) || 0 };
@@ -556,9 +582,23 @@
                     <h3 className="text-rose-600 font-bold flex items-center gap-2 mb-3"><Bell size={18} /> 訂貨提醒 ({alerts.lowStock.length})</h3>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
                       {alerts.lowStock.map(item => (
-                        <div key={item.id} className="flex justify-between text-sm p-2 bg-rose-50 rounded-lg">
-                          <span className="font-bold">{item.name}</span>
-                          <span className="text-rose-600 font-bold font-mono">{getTotalQty(item.batches)} / {item.minQty}</span>
+                        <div key={item.id} className="flex justify-between items-center text-sm p-2 bg-rose-50 rounded-lg group">
+                          <div>
+                            <span className="font-bold">{item.name}</span>
+                            <span className="text-rose-600 font-bold font-mono ml-2">{getTotalQty(item.batches)} / {item.minQty}</span>
+                          </div>
+                          <button onClick={() => { 
+                            const nextWeek = new Date();
+                            nextWeek.setDate(nextWeek.getDate() + 7);
+                            setOrderForm({ 
+                              itemId: item.id, 
+                              qty: 1, 
+                              expectedDate: nextWeek.getFullYear() + '/' + String(nextWeek.getMonth() + 1).padStart(2, '0') + '/' + String(nextWeek.getDate()).padStart(2, '0') 
+                            }); 
+                            setShowOrderModal(true); 
+                          }} className="text-rose-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition p-1 bg-white rounded shadow-sm" title="已叫貨 (紀錄)">
+                            <Icon name="check-square" size={16} />
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -784,7 +824,7 @@
                         <tr key={idx} className="hover:bg-slate-50 transition">
                           <td className="p-4 font-mono text-sm text-slate-400 text-center">{log.date}</td>
                           <td className="p-4 font-bold text-slate-800 text-lg">{item?.name || '已刪除項目'}</td>
-                          <td className="p-4 text-center"><span className={`px-3 py-1 rounded text-xs font-bold ${log.type === '入庫' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{log.type}</span></td>
+                          <td className="p-4 text-center"><span className={`px-3 py-1 rounded text-xs font-bold ${log.type === '入庫' ? 'bg-blue-100 text-blue-700' : log.type === '出庫' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>{log.type}</span></td>
                           <td className="p-4 text-center font-bold text-slate-800 text-lg">{log.change}</td>
                           <td className="p-4 text-center font-mono text-sm">{log.batchNo}</td>
                           {userRole === 'admin' && (
@@ -1033,6 +1073,38 @@
               </div>
             </div>
           )}
+
+          {showOrderModal && (() => {
+            const item = inventory.find(i => i.id == orderForm.itemId);
+            return (
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in font-sans">
+                  <div className="p-6 border-b flex justify-between items-center bg-purple-50 text-purple-800 font-bold">
+                    已叫貨登記 <button onClick={() => setShowOrderModal(false)}><X size={20} /></button>
+                  </div>
+                  <form onSubmit={handleOrderSubmit} className="p-6 space-y-5">
+                    <div>
+                      <label className="text-[10px] font-extrabold text-slate-400 block mb-1 uppercase tracking-widest">品項名稱</label>
+                      <input type="text" disabled className="w-full p-3 border rounded-xl bg-slate-50 font-bold text-slate-400" value={item?.name || ''} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-extrabold block mb-1 uppercase tracking-widest">訂購數量 ({item?.unit})</label>
+                        <input type="number" required min="0" step="any" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-purple-500 shadow-sm font-bold" value={orderForm.qty} onChange={e => setOrderForm({ ...orderForm, qty: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold block mb-1 uppercase tracking-widest">預計到貨日期</label>
+                        <input type="text" required placeholder="YYYY/MM/DD" className="w-full p-3 border rounded-xl font-bold bg-purple-50 border-purple-100 outline-none shadow-sm text-purple-800" value={orderForm.expectedDate} onChange={e => setOrderForm({ ...orderForm, expectedDate: e.target.value })} />
+                      </div>
+                    </div>
+                    <button type="submit" className="w-full py-4 bg-purple-600 text-white rounded-2xl font-bold shadow-xl hover:bg-purple-700 transition active:scale-[0.98]">
+                      確認叫貨並寫入紀錄
+                    </button>
+                  </form>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       );
     };
