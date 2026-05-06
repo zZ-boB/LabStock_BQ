@@ -581,26 +581,35 @@
                   <div className="bg-white p-5 rounded-2xl border-l-4 border-l-rose-500 shadow-sm">
                     <h3 className="text-rose-600 font-bold flex items-center gap-2 mb-3"><Bell size={18} /> 訂貨提醒 ({alerts.lowStock.length})</h3>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {alerts.lowStock.map(item => (
-                        <div key={item.id} className="flex justify-between items-center text-sm p-2 bg-rose-50 rounded-lg group">
-                          <div>
-                            <span className="font-bold">{item.name}</span>
-                            <span className="text-rose-600 font-bold font-mono ml-2">{getTotalQty(item.batches)} / {item.minQty}</span>
+                      {alerts.lowStock.map(item => {
+                        const recentLog = history.find(log => log.itemId == item.id && (log.type === '叫貨' || log.type === '入庫'));
+                        const isOrdered = recentLog && recentLog.type === '叫貨';
+                        const bgColor = isOrdered ? 'bg-orange-50' : 'bg-rose-50';
+                        const textColor = isOrdered ? 'text-orange-600' : 'text-rose-600';
+                        const btnColor = isOrdered ? 'text-orange-300 hover:text-orange-600' : 'text-rose-300 hover:text-rose-600';
+
+                        return (
+                          <div key={item.id} className={`flex justify-between items-center text-sm p-2 ${bgColor} rounded-lg group`}>
+                            <div>
+                              <span className="font-bold">{item.name}</span>
+                              <span className={`${textColor} font-bold font-mono ml-2`}>{getTotalQty(item.batches)} / {item.minQty}</span>
+                              {isOrdered && <span className="ml-2 text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-bold tracking-widest uppercase">已叫貨</span>}
+                            </div>
+                            <button onClick={() => { 
+                              const nextWeek = new Date();
+                              nextWeek.setDate(nextWeek.getDate() + 7);
+                              setOrderForm({ 
+                                itemId: item.id, 
+                                qty: 1, 
+                                expectedDate: nextWeek.getFullYear() + '/' + String(nextWeek.getMonth() + 1).padStart(2, '0') + '/' + String(nextWeek.getDate()).padStart(2, '0') 
+                              }); 
+                              setShowOrderModal(true); 
+                            }} className={`${btnColor} transition p-1.5 bg-white rounded-lg shadow-sm`} title="登記叫貨">
+                              <Icon name="check" size={16} />
+                            </button>
                           </div>
-                          <button onClick={() => { 
-                            const nextWeek = new Date();
-                            nextWeek.setDate(nextWeek.getDate() + 7);
-                            setOrderForm({ 
-                              itemId: item.id, 
-                              qty: 1, 
-                              expectedDate: nextWeek.getFullYear() + '/' + String(nextWeek.getMonth() + 1).padStart(2, '0') + '/' + String(nextWeek.getDate()).padStart(2, '0') 
-                            }); 
-                            setShowOrderModal(true); 
-                          }} className="text-rose-300 hover:text-rose-600 transition p-1.5 bg-white rounded-lg shadow-sm" title="已叫貨 (紀錄)">
-                            <Icon name="check" size={16} />
-                          </button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                   <div className="bg-white p-5 rounded-2xl border-l-4 border-l-amber-500 shadow-sm">
